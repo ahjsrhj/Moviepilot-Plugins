@@ -13,7 +13,7 @@ MoviePilot第三方插件市场：https://github.com/Aqr-k/MoviePilot-Plugins/
 | 5  |  [用户管理拓展功能](docs/UserSettingPlus.md)  | v1.4 | 支持快速添加新的超级管理员；支持管理用户权限等级、用户名、用户密码、用户状态、用户邮箱。 | 无需认证 |
 | 6  |  [钉钉机器人消息通知](/docs/DingTalkBotMsg.md)  | v1.5 | 支持使用钉钉群聊机器人发送消息通知。                       | 无需认证 |
 | 7  |  [Server酱消息通知](/docs/ServerChanMsg.md)  | v1.1 | 支持使用Server酱发送消息通知。                       | 无需认证 |
-| 8  |  [插件库更新推送](/docs/PluginMarketsAutoUpdate.md)  | v1.9 | 支持从官方Wiki中获取记录的最新全量插件库、结合添加黑名单，自动化添加插件库。 | 无需认证 |
+| 8  |  [插件库更新推送](/docs/PluginMarketsAutoUpdate.md)  | v2.0 | 支持从官方Wiki中获取记录的最新全量插件库、结合添加黑名单，自动化添加插件库。 | 无需认证 |
 
 ### 特别鸣谢
 - [MoviePilot](https://github.com/jxxghp/MoviePilot)
