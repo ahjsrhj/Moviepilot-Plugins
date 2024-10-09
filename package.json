@@ -169,5 +169,18 @@
           "v1.1": "优化：文案描述。",
           "v1.0": "增加：支持插件库更新推送，并按需添加插件。"
         }
+    },
+    "PipDetectionInstall": {
+        "name": "PIP依赖包检测与安装",
+        "description": "解决MoviePilot 的PIP依赖包下载超时失败、不支持代理导致下载缓慢等问题。",
+        "version": "1.0",
+        "labels": "工具",
+        "icon": "https://raw.githubusercontent.com/Aqr-K/MoviePilot-Plugins/main/icons/PyPI.png",
+        "author": "Aqr-K",
+        "level": 1,
+        "v2": true,
+        "history": {
+          "v1.0": "增加：支持手动运行本地已安装的插件的`requirements.txt`，未安装的依赖会自动安装。"
+        }
     }
 }
