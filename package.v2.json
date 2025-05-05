@@ -1,0 +1,15 @@
+{
+    "RouterOSDNS": {
+        "name": "ROS软路由DNS Static",
+        "description": "定时将本地Hosts同步至 RouterOS 的 DNS Static 中。",
+        "version": "0.1",
+        "labels": "工具",
+        "icon": "Synomail_A.png",
+        "author": "Aqr-K",
+        "v2": true,
+        "level": 1,
+        "history": {
+          "v0.1": "增加：发布测试版。"
+        }
+    }
+}
