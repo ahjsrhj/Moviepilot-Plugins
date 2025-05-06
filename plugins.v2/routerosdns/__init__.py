@@ -8,7 +8,6 @@ import pytz
 from requests import Response
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
-from requests.auth import HTTPBasicAuth
 
 from app.core.config import settings
 from app.log import logger
@@ -27,7 +26,7 @@ class RouterOSDNS(_PluginBase):
     # 插件描述
     plugin_desc = "定时将本地Hosts同步至 RouterOS 的 DNS Static 中。"
     # 插件版本
-    plugin_version = "0.10"
+    plugin_version = "0.11"
     # 插件作者
     plugin_author = "Aqr-K"
     # 插件图标
@@ -928,7 +927,7 @@ class RouterOSDNS(_PluginBase):
 
             response = RequestUtils(timeout=self._timeout).request(url=url,
                                                                    method=method,
-                                                                   hearder=self.__ros_headers,
+                                                                   header=self.__ros_headers,
                                                                    **data)
             if not response:
                 logger.warning(f"{log_tag} DNS 记录失败，响应为空")
