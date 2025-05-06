@@ -26,7 +26,7 @@ class RouterOSDNS(_PluginBase):
     # 插件描述
     plugin_desc = "定时将本地Hosts同步至 RouterOS 的 DNS Static 中。"
     # 插件版本
-    plugin_version = "0.7"
+    plugin_version = "0.8"
     # 插件作者
     plugin_author = "Aqr-K"
     # 插件图标
@@ -958,14 +958,18 @@ class RouterOSDNS(_PluginBase):
         """
         更新 MikroTik 路由器的 DNS 记录。
         """
-        response = self.__request_ros_api(url=f"{url}/{record_id}", method="patch", data=record)
+        if record_id:
+            url = f"{url.rstrip('/')}/{record_id}"
+        response = self.__request_ros_api(url=url, method="patch", data=record)
         return response
 
     def __delete_dns_record(self, url, record_id) -> Optional[Response]:
         """
         从 MikroTik 路由器删除单条 DNS 记录。
         """
-        response = self.__request_ros_api(url=f"{url}/{record_id}", method="delete")
+        if record_id:
+            url = f"{url.rstrip('/')}/{record_id}"
+        response = self.__request_ros_api(url=url, method="delete")
         return response
 
     def __update_config(self):
