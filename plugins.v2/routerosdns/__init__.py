@@ -26,7 +26,7 @@ class RouterOSDNS(_PluginBase):
     # 插件描述
     plugin_desc = "定时将本地Hosts同步至 RouterOS 的 DNS Static 中。"
     # 插件版本
-    plugin_version = "0.4"
+    plugin_version = "0.5"
     # 插件作者
     plugin_author = "Aqr-K"
     # 插件图标
@@ -571,6 +571,9 @@ class RouterOSDNS(_PluginBase):
         # 将本地的hosts解析转换成列表字典
         local_hosts_list = self.__get_local_hosts_list(lines=local_hosts_lines)
 
+        logger.debug(f"本地hosts列表：{local_hosts_list}")
+        logger.debug(f"远程dns列表：{remote_dns_static_list}")
+
         if not local_hosts_list:
             self.__send_message(title="【RouterOS路由DNS Static更新】", text="获取本地hosts失败，更新失败，请检查日志")
             return False
@@ -868,7 +871,8 @@ class RouterOSDNS(_PluginBase):
             # 更新数据
             record["disabled"] = record_disabled if record_disabled else record.get("disabled", "false")
             record["dynamic"] = record_dynamic if record_dynamic else record.get("dynamic", "false")
-            record["match-subdomain"] = record_match_subdomain if record_match_subdomain else record.get("match-subdomain", "false")
+            record["match-subdomain"] = record_match_subdomain if record_match_subdomain else record.get(
+                "match-subdomain", "false")
             record["ttl"] = ttl_str
             record["name"] = record_name
             record["type"] = record_address_type
