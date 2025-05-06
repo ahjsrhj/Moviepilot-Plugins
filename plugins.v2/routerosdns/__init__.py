@@ -27,7 +27,7 @@ class RouterOSDNS(_PluginBase):
     # 插件描述
     plugin_desc = "定时将本地Hosts同步至 RouterOS 的 DNS Static 中。"
     # 插件版本
-    plugin_version = "0.9"
+    plugin_version = "0.10"
     # 插件作者
     plugin_author = "Aqr-K"
     # 插件图标
@@ -540,11 +540,10 @@ class RouterOSDNS(_PluginBase):
         if not self._username or not self._password:
             raise ValueError("RouterOS用户名或密码未设置")
         auth = base64.b64encode(f"{self._username}:{self._password}".encode("utf-8")).decode("utf-8")
-        # return {
-        #     "Content-Type": "application/json",
-        #     "Authorization": f"Basic {auth}",
-        # }
-        return HTTPBasicAuth(self._username, self._password)
+        return {
+            "Content-Type": "application/json",
+            "Authorization": f"Basic {auth}",
+        }
 
     def __get_base_url(self) -> Optional[str]:
         """
@@ -567,7 +566,10 @@ class RouterOSDNS(_PluginBase):
         if not base_url:
             return False
         # 获取远程hosts
-        remote_dns_static_list = self.__get_dns_record(url=base_url)
+        response = self.__get_dns_record(url=base_url)
+        if response.status_code != 200:
+            return False
+        remote_dns_static_list = response.json()
         # 获取本地hosts
         local_hosts_lines = self.__get_local_hosts()
         # 将本地的hosts解析转换成列表字典
@@ -926,11 +928,13 @@ class RouterOSDNS(_PluginBase):
 
             response = RequestUtils(timeout=self._timeout).request(url=url,
                                                                    method=method,
-                                                                   auth=self.__ros_headers,
+                                                                   hearder=self.__ros_headers,
                                                                    **data)
             if not response:
                 logger.warning(f"{log_tag} DNS 记录失败，响应为空")
                 return []
+            elif response.status_code != 200:
+                logger.error(f"{log_tag} DNS 记录失败，状态码: {response.status_code}，响应: {response.text}")
             else:
                 logger.debug(f"{log_tag} DNS 记录成功: {response}")
             return response
