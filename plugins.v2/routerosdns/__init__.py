@@ -25,14 +25,14 @@ class RouterOSDNS(_PluginBase):
     plugin_name = "ROS软路由DNS Static"
     # 插件描述
     plugin_desc = "定时将本地Hosts同步至 RouterOS 的 DNS Static 中。"
-    # 插件图标
-    plugin_icon = "https://raw.githubusercontent.com/InfinityPacer/MoviePilot-Plugins/main/icons/mihosts.png"
     # 插件版本
-    plugin_version = "0.1"
+    plugin_version = "0.2"
     # 插件作者
     plugin_author = "Aqr-K"
+    # 插件图标
+    plugin_icon = "https://raw.githubusercontent.com/Aqr-K/MoviePilot-Plugins/main/icons/Routeros_A.png"
     # 作者主页
-    author_url = f"https://github.com/{plugin_author}"
+    author_url = "https://github.com/Aqr-K"
     # 插件配置项ID前缀
     plugin_config_prefix = "routerosdns_"
     # 加载顺序
@@ -396,7 +396,7 @@ class RouterOSDNS(_PluginBase):
                                             'model': 'ttl',
                                             'label': 'TTL',
                                             'placeholder': 'DNS记录的TTL时间',
-                                            'hint': '设置DNS记录的TTL时间',
+                                            'hint': '设置DNS记录的TTL时间，最小120',
                                             'persistent-hint': True,
                                             'type': 'number',
                                             'min': 120,
@@ -520,7 +520,7 @@ class RouterOSDNS(_PluginBase):
         pass
 
     @staticmethod
-    def __correct_the_address_format(url: str) -> str | None:
+    def __correct_the_address_format(url: str) -> Optional[str]:
         """
         校正地址格式
         """
@@ -536,17 +536,25 @@ class RouterOSDNS(_PluginBase):
         """
         获取路由器请求头
         """
+        if not self._username or not self._password:
+            raise ValueError("RouterOS用户名或密码未设置")
         auth = base64.b64encode(f"{self._username}:{self._password}".encode("utf-8")).decode("utf-8")
         return {
             "Content-Type": "application/json",
             "Authorization": f"Basic {auth}",
         }
 
-    def __get_base_url(self):
+    def __get_base_url(self) -> Optional[str]:
         """
         获取基础api
         """
-        return self.__correct_the_address_format(url=self._address) + "rest/ip/dns/static"
+        try:
+            if not self._address:
+                raise ValueError("RouterOS地址未设置")
+            return self.__correct_the_address_format(url=self._address) + "rest/ip/dns/static"
+        except Exception as e:
+            logger.error(f"获取RouterOS地址失败: {e}")
+            return None
 
     def add_or_update_remote_dns_from_local_hosts(self) -> bool:
         """
@@ -554,6 +562,8 @@ class RouterOSDNS(_PluginBase):
         """
         # dns 地址
         base_url = self.__get_base_url()
+        if not base_url:
+            return False
         # 获取远程hosts
         remote_dns_static_list = self.__get_dns_record(url=base_url)
         # 获取本地hosts
@@ -570,7 +580,7 @@ class RouterOSDNS(_PluginBase):
                                                                      list(remote_dns_static_list))
 
         # 执行 更新/新增
-        if not updated_list or not add_list:
+        if not updated_list and not add_list:
             logger.info("没有需要 更新 或 新增 的 DNS 记录")
             return False
         else:
@@ -678,25 +688,27 @@ class RouterOSDNS(_PluginBase):
                         continue
 
                     is_update = False
-                    for remote_dict in remote_list:
-                        remote_id = remote_dict.get(".id")
-                        remote_name = remote_dict.get("name")
-                        remote_disabled = remote_dict.get("disabled", "false")
-                        remote_dynamic = remote_dict.get("dynamic", "false")
+                    if remote_list:
+                        for remote_dict in remote_list:
+                            remote_id = remote_dict.get(".id", None)
+                            remote_name = remote_dict.get("name", None)
+                            remote_disabled = remote_dict.get("disabled", "false")
+                            remote_dynamic = remote_dict.get("dynamic", "false")
 
-                        # 更新，仅更新匹配到的第一条，避免错误
-                        if remote_name == local_address:
-                            # 判断本地IP是IPv4还是IPv6
-                            not_ignore, ip_version = self.__should_ignore_ip_and_judge_v4_or_v6(ip=local_ip)
-                            if not_ignore:
-                                update_list.append(self.__build_record_data(record_address=local_ip,
-                                                                            record_id=remote_id,
-                                                                            record_name=remote_name,
-                                                                            ip_version=ip_version,
-                                                                            record_disabled=remote_disabled,
-                                                                            record_dynamic=remote_dynamic))
-                                is_update = True
-                                break
+                            # 更新，仅更新匹配到的第一条，避免错误
+                            if remote_name == local_address:
+                                # 判断本地IP是IPv4还是IPv6
+                                not_ignore, ip_version = self.__should_ignore_ip_and_judge_v4_or_v6(ip=local_ip)
+                                if not_ignore:
+                                    update_list.append(self.__build_record_data(record_address=local_ip,
+                                                                                record_id=remote_id,
+                                                                                record_name=remote_name,
+                                                                                ip_version=ip_version,
+                                                                                record_disabled=remote_disabled,
+                                                                                record_dynamic=remote_dynamic))
+
+                                    is_update = True
+                                    break
 
                     # 新增
                     if is_update is False:
@@ -705,6 +717,7 @@ class RouterOSDNS(_PluginBase):
                             add_list.append(self.__build_record_data(record_address=local_ip,
                                                                      record_name=local_address,
                                                                      ip_version=ip_version))
+            return update_list, add_list
 
         except Exception as e:
             logger.error(f"无法获取需要 新增 或 更新 的 dns 列表：{e}")
@@ -796,14 +809,14 @@ class RouterOSDNS(_PluginBase):
 
         return results
 
-    def __should_ignore_ip_and_judge_v4_or_v6(self, ip: str) -> Tuple[bool, int | None]:
+    def __should_ignore_ip_and_judge_v4_or_v6(self, ip: str) -> Tuple[bool, Optional[int]]:
         """
         检查是否应该忽略给定的IP地址，并判断是IPv4还是IPv6地址
         """
         try:
             ip_obj = ipaddress.ip_address(ip)
             # 忽略本地回环地址 (127.0.0.0/8)
-            if ip_obj.is_loopback:
+            if not ip_obj.is_loopback:
                 if ip_obj.version == 4 and self._ipv4:
                     return True, 4
                 if ip_obj.version == 6 and self._ipv6:
@@ -826,8 +839,8 @@ class RouterOSDNS(_PluginBase):
                           text=text)
 
     def __build_record_data(self, record_address: str, record_name: str, ip_version: int,
-                            record_disabled: str = "false", record_dynamic: str = "false",
-                            record_id: str = None) -> dict:
+                            record_disabled: str = None, record_dynamic: str = None,
+                            record_id: str = None, record_data: dict = None) -> dict:
         """
         处理 添加/更新 数据
         """
@@ -838,8 +851,9 @@ class RouterOSDNS(_PluginBase):
         else:
             record_address_type = "CNAME"
 
-        if self._ttl < 0:
+        if self._ttl < 120:
             self._ttl = 24 * 60 * 60
+            self.__update_config()
         # 将 ttl 转换成 d h:m:s 格式
         total_seconds = int(self._ttl)
         days = total_seconds // (24 * 60 * 60)
@@ -851,19 +865,32 @@ class RouterOSDNS(_PluginBase):
 
         ttl_str = f"{days}d {hours}h{minutes}m{seconds}s"
 
-        record = {
-            ".id": record_id,
-            "disabled": record_disabled,
-            "dynamic": record_dynamic,
-            "name": record_name,
-            "ttl": ttl_str,
-            "type": record_address_type,
-        }
+        # 在原有数据的基础上进行更新
+        if record_data:
+            record = record_data
+            # 更新数据
+            record["disabled"] = record_disabled if record_disabled else record.get("disabled", "false")
+            record["dynamic"] = record_dynamic if record_dynamic else record.get("dynamic", "false")
+            record["ttl"] = ttl_str
+            record["name"] = record_name
+            record["type"] = record_address_type
+        # 创建新数据
+        else:
+            record = {
+                ".id": record_id,
+                "disabled": record_disabled,
+                "dynamic": record_dynamic,
+                "name": record_name,
+                "ttl": ttl_str,
+                "type": record_address_type,
+            }
 
-        if record_address == ["A", "AAAA"]:
+        if record_address_type in ["A", "AAAA"]:
             record.update({"address": record_address})
+            record.pop("cname", None)
         else:
             record.update({"cname": record_address})
+            record.pop("address", None)
 
         return record
 
@@ -871,7 +898,7 @@ class RouterOSDNS(_PluginBase):
     api 请求方法
     """
 
-    def __request_ros_api(self, method, url: str, data=None) -> Optional[Response] | List:
+    def __request_ros_api(self, method, url: str, data: dict = None) -> Optional[Response] | List:
         """
         通用请求方法，处理RouterOS路由器的DNS Static
         """
@@ -888,15 +915,12 @@ class RouterOSDNS(_PluginBase):
             else:
                 raise ValueError(f"不支持的请求方法: {method}")
 
-            if data and method in ["put", "patch"]:
-                response = RequestUtils(timeout=self._timeout).request(url=url,
-                                                                       method=method,
-                                                                       headers=self.__ros_headers,
-                                                                       **data)
-            else:
-                response = RequestUtils(timeout=self._timeout).request(url=url,
-                                                                       method=method,
-                                                                       headers=self.__ros_headers)
+            data = {"json": data} if data else {}
+
+            response = RequestUtils(timeout=self._timeout).request(url=url,
+                                                                   method=method,
+                                                                   headers=self.__ros_headers,
+                                                                   **data)
             if not response:
                 logger.warning(f"{log_tag} DNS 记录失败，响应为空")
                 return []
@@ -936,3 +960,26 @@ class RouterOSDNS(_PluginBase):
         """
         response = self.__request_ros_api(url=f"{url}/{record_id}", method="delete")
         return response
+
+    def __update_config(self):
+        """
+        更新配置
+        """
+        config = {
+            "enabled": self._enabled,
+            "onlyonce": self._onlyonce,
+            "disabled_del": self._disabled_del,
+            "cron": self._cron,
+            "notify": self._notify,
+            "msg_type": self._msg_type,
+            "address": self._address,
+            "timeout": self._timeout,
+            "ttl": self._ttl,
+            "username": self._username,
+            "password": self._password,
+            "ipv4": self._ipv4,
+            "ipv6": self._ipv6,
+            "ignore": self._ignore
+        }
+        # 更新配置
+        self.update_config(config)
