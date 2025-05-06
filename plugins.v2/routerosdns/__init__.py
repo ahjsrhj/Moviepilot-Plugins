@@ -8,6 +8,7 @@ import pytz
 from requests import Response
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from requests.auth import HTTPBasicAuth
 
 from app.core.config import settings
 from app.log import logger
@@ -26,7 +27,7 @@ class RouterOSDNS(_PluginBase):
     # 插件描述
     plugin_desc = "定时将本地Hosts同步至 RouterOS 的 DNS Static 中。"
     # 插件版本
-    plugin_version = "0.8"
+    plugin_version = "0.9"
     # 插件作者
     plugin_author = "Aqr-K"
     # 插件图标
@@ -532,17 +533,18 @@ class RouterOSDNS(_PluginBase):
         return None
 
     @property
-    def __ros_headers(self) -> dict:
+    def __ros_headers(self):
         """
         获取路由器请求头
         """
         if not self._username or not self._password:
             raise ValueError("RouterOS用户名或密码未设置")
         auth = base64.b64encode(f"{self._username}:{self._password}".encode("utf-8")).decode("utf-8")
-        return {
-            "Content-Type": "application/json",
-            "Authorization": f"Basic {auth}",
-        }
+        # return {
+        #     "Content-Type": "application/json",
+        #     "Authorization": f"Basic {auth}",
+        # }
+        return HTTPBasicAuth(self._username, self._password)
 
     def __get_base_url(self) -> Optional[str]:
         """
@@ -924,7 +926,7 @@ class RouterOSDNS(_PluginBase):
 
             response = RequestUtils(timeout=self._timeout).request(url=url,
                                                                    method=method,
-                                                                   headers=self.__ros_headers,
+                                                                   auth=self.__ros_headers,
                                                                    **data)
             if not response:
                 logger.warning(f"{log_tag} DNS 记录失败，响应为空")
