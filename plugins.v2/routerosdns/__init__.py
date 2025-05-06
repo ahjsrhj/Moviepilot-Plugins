@@ -917,6 +917,9 @@ class RouterOSDNS(_PluginBase):
             else:
                 raise ValueError(f"不支持的请求方法: {method}")
 
+            if data:
+                logger.debug(f"{log_tag} DNS 记录，URL: {url} 数据: {data}")
+
             data = {"json": data} if data else {}
 
             response = RequestUtils(timeout=self._timeout).request(url=url,
