@@ -26,7 +26,7 @@ class RouterOSDNS(_PluginBase):
     # 插件描述
     plugin_desc = "定时将本地Hosts同步至 RouterOS 的 DNS Static 中。"
     # 插件版本
-    plugin_version = "0.5"
+    plugin_version = "0.6"
     # 插件作者
     plugin_author = "Aqr-K"
     # 插件图标
@@ -926,6 +926,8 @@ class RouterOSDNS(_PluginBase):
             if not response:
                 logger.warning(f"{log_tag} DNS 记录失败，响应为空")
                 return []
+            else:
+                logger.debug(f"{log_tag} DNS 记录成功: {response}")
             return response
 
         except Exception as e:
@@ -939,9 +941,7 @@ class RouterOSDNS(_PluginBase):
         """
         if record_id:
             url = f"{url.rstrip('/')}/{record_id}"
-        logger.debug(f"开始获取 DNS 记录: {url}")
         response = self.__request_ros_api(url=url, method="get")
-        logger.info(f"获取 DNS 记录成功: {response}")
         return response
 
     def __add_dns_record(self, url: str, record: dict) -> Optional[Response]:
