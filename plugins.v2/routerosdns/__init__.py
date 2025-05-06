@@ -26,7 +26,7 @@ class RouterOSDNS(_PluginBase):
     # 插件描述
     plugin_desc = "定时将本地Hosts同步至 RouterOS 的 DNS Static 中。"
     # 插件版本
-    plugin_version = "0.3"
+    plugin_version = "0.4"
     # 插件作者
     plugin_author = "Aqr-K"
     # 插件图标
@@ -692,8 +692,6 @@ class RouterOSDNS(_PluginBase):
                         for remote_dict in remote_list:
                             remote_id = remote_dict.get(".id", None)
                             remote_name = remote_dict.get("name", None)
-                            remote_disabled = remote_dict.get("disabled", "false")
-                            remote_dynamic = remote_dict.get("dynamic", "false")
 
                             # 更新，仅更新匹配到的第一条，避免错误
                             if remote_name == local_address:
@@ -704,8 +702,7 @@ class RouterOSDNS(_PluginBase):
                                                                                 record_id=remote_id,
                                                                                 record_name=remote_name,
                                                                                 ip_version=ip_version,
-                                                                                record_disabled=remote_disabled,
-                                                                                record_dynamic=remote_dynamic))
+                                                                                record_data=remote_dict))
 
                                     is_update = True
                                     break
@@ -839,7 +836,7 @@ class RouterOSDNS(_PluginBase):
                           text=text)
 
     def __build_record_data(self, record_address: str, record_name: str, ip_version: int,
-                            record_disabled: str = None, record_dynamic: str = None,
+                            record_disabled: str = None, record_dynamic: str = None, record_match_subdomain: str = None,
                             record_id: str = None, record_data: dict = None) -> dict:
         """
         处理 添加/更新 数据
@@ -871,6 +868,7 @@ class RouterOSDNS(_PluginBase):
             # 更新数据
             record["disabled"] = record_disabled if record_disabled else record.get("disabled", "false")
             record["dynamic"] = record_dynamic if record_dynamic else record.get("dynamic", "false")
+            record["match-subdomain"] = record_match_subdomain if record_match_subdomain else record.get("match-subdomain", "false")
             record["ttl"] = ttl_str
             record["name"] = record_name
             record["type"] = record_address_type
@@ -937,6 +935,7 @@ class RouterOSDNS(_PluginBase):
         """
         if record_id:
             url = f"{url.rstrip('/')}/{record_id}"
+        logger.debug(f"开始获取 DNS 记录: {url}")
         response = self.__request_ros_api(url=url, method="get")
         logger.info(f"获取 DNS 记录成功: {response}")
         return response
