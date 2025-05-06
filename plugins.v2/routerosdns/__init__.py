@@ -1,14 +1,12 @@
-import base64
 import ipaddress
 import threading
 from datetime import datetime, timedelta
 from typing import Any, List, Dict, Tuple, Optional
 
 import pytz
-from requests import Response
+from requests import Response, auth
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
-
 from app.core.config import settings
 from app.log import logger
 from app.plugins import _PluginBase
@@ -26,7 +24,7 @@ class RouterOSDNS(_PluginBase):
     # 插件描述
     plugin_desc = "定时将本地Hosts同步至 RouterOS 的 DNS Static 中。"
     # 插件版本
-    plugin_version = "0.11"
+    plugin_version = "1.0"
     # 插件作者
     plugin_author = "Aqr-K"
     # 插件图标
@@ -45,7 +43,7 @@ class RouterOSDNS(_PluginBase):
     # 立即运行一次
     _onlyonce: bool = False
     # 同步清除记录
-    _disabled_del: bool = False
+    _del_dns: bool = False
     # 发送通知
     _notify: bool = False
     # 发送通知类型
@@ -66,6 +64,8 @@ class RouterOSDNS(_PluginBase):
     _ipv4: bool = True
     # IPv6
     _ipv6: bool = True
+    # 子域名匹配
+    _match_subdomain: bool = False
     # 忽略的IP或域名
     _ignore: str = None
 
@@ -80,7 +80,7 @@ class RouterOSDNS(_PluginBase):
 
         self._enabled = config.get("enabled", False)
         self._onlyonce = config.get("onlyonce", False)
-        self._disabled_del = config.get("disabled_del", False)
+        self._del_dns = config.get("del_dns", False)
         self._cron = config.get("cron", "0 6 * * *")
         self._notify = config.get("notify")
         self._msg_type = config.get("msg_type")
@@ -91,36 +91,39 @@ class RouterOSDNS(_PluginBase):
         self._password = config.get("password")
         self._ipv4 = config.get("ipv4", True)
         self._ipv6 = config.get("ipv6", True)
+        self._match_subdomain = config.get("match_subdomain", False)
         self._ignore = config.get("ignore")
 
         # 停止现有任务
         self.stop_service()
 
-        # 启动服务
-        self._scheduler = BackgroundScheduler(timezone=settings.TZ)
-        is_onlyonce = False
-        if self._onlyonce:
-            logger.info(f"{self.plugin_name}服务，立即运行一次")
-            self._scheduler.add_job(
-                func=self.add_or_update_remote_dns_from_local_hosts,
-                trigger="date",
-                run_date=datetime.now(tz=pytz.timezone(settings.TZ)) + timedelta(seconds=3),
-                name=f"{self.plugin_name}",
-            )
-            # 关闭一次性开关
+        if self._del_dns:
+            # self.delete_local_hosts_from_remote_dns()
             self._onlyonce = False
-            config["onlyonce"] = False
-            self.update_config(config=config)
-            is_onlyonce = True
+            self._enabled = False
+            self._del_dns = False
+            self.__update_config()
 
-        # 当关闭插件时，同步删除现有的记录，仅enabled生效，onlyonce时，不触发
-        if is_onlyonce and self._enabled is False and self._disabled_del:
-            self.delete_local_hosts_from_remote_dns()
+        else:
+            # 启动服务
+            self._scheduler = BackgroundScheduler(timezone=settings.TZ)
 
-        # 启动服务
-        if self._scheduler.get_jobs():
-            self._scheduler.print_jobs()
-            self._scheduler.start()
+            if self._onlyonce:
+                logger.info(f"{self.plugin_name}服务，立即运行一次")
+                self._scheduler.add_job(
+                    func=self.add_or_update_remote_dns_from_local_hosts,
+                    trigger="date",
+                    run_date=datetime.now(tz=pytz.timezone(settings.TZ)) + timedelta(seconds=3),
+                    name=f"{self.plugin_name}",
+                )
+                # 关闭一次性开关
+                self._onlyonce = False
+                self.__update_config()
+
+            # 启动服务
+            if self._scheduler.get_jobs():
+                self._scheduler.print_jobs()
+                self._scheduler.start()
 
     def get_state(self) -> bool:
         return self._enabled
@@ -262,6 +265,30 @@ class RouterOSDNS(_PluginBase):
                                     }
                                 ]
                             },
+                            # {
+                            #     'component': 'VCol',
+                            #     'props': {
+                            #         'cols': 12,
+                            #         'md': 4
+                            #     },
+                            #     'content': [
+                            #         {
+                            #             'component': 'VSwitch',
+                            #             'props': {
+                            #                 'model': 'del_dns',
+                            #                 'label': '立刻清除DNS',
+                            #                 'hint': '终止运行并清除符合当前hosts的DNS记录',
+                            #                 'persistent-hint': True
+                            #             }
+                            #         }
+                            #     ]
+                            # },
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+
                             {
                                 'component': 'VCol',
                                 'props': {
@@ -270,12 +297,38 @@ class RouterOSDNS(_PluginBase):
                                 },
                                 'content': [
                                     {
-                                        'component': 'VSwitch',
+                                        'component': 'VTextField',
                                         'props': {
-                                            'model': 'disabled_del',
-                                            'label': '同步清除记录',
-                                            'hint': '停止创建时，同步清除hosts中命中的DNS记录',
-                                            'persistent-hint': True
+                                            'model': 'timeout',
+                                            'label': '超时时间',
+                                            'placeholder': '请求超时时间，单位秒',
+                                            'hint': 'API请求时的超时时间',
+                                            'persistent-hint': True,
+                                            'type': 'number',
+                                            'min': 1,
+                                            'suffix': '秒',
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 4
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'ttl',
+                                            'label': 'TTL',
+                                            'placeholder': 'DNS记录的TTL时间',
+                                            'hint': 'DNS记录的TTL，最小120',
+                                            'persistent-hint': True,
+                                            'type': 'number',
+                                            'min': 120,
+                                            'suffix': '秒',
                                         }
                                     }
                                 ]
@@ -299,75 +352,11 @@ class RouterOSDNS(_PluginBase):
                                     }
                                 ]
                             },
-                        ]
-                    },
-                    {
-                        'component': 'VRow',
-                        'content': [
                             {
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 4
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VSwitch',
-                                        'props': {
-                                            'model': 'ipv4',
-                                            'label': 'IPv4',
-                                            'hint': '同步IPv4地址的Hosts',
-                                            'persistent-hint': True
-                                        }
-                                    }
-                                ]
-                            },
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                    'md': 4
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VSwitch',
-                                        'props': {
-                                            'model': 'ipv6',
-                                            'label': 'IPv6',
-                                            'hint': '同步IPv6地址的Hosts',
-                                            'persistent-hint': True
-                                        }
-                                    }
-                                ]
-                            },
-
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                    'md': 4
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VTextField',
-                                        'props': {
-                                            'model': 'timeout',
-                                            'label': '超时时间',
-                                            'placeholder': '请求超时时间，单位秒',
-                                            'hint': '设置请求的超时时间',
-                                            'persistent-hint': True,
-                                            'type': 'number',
-                                            'min': 1,
-                                            'suffix': '秒',
-                                        }
-                                    }
-                                ]
-                            },
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                    'md': 8
+                                    'md': 12
                                 },
                                 'content': [
                                     {
@@ -379,28 +368,6 @@ class RouterOSDNS(_PluginBase):
                                             'hint': '请输入路由器的地址',
                                             'persistent-hint': True,
                                             'clearable': True,
-                                        }
-                                    }
-                                ]
-                            },
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                    'md': 4
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VTextField',
-                                        'props': {
-                                            'model': 'ttl',
-                                            'label': 'TTL',
-                                            'placeholder': 'DNS记录的TTL时间',
-                                            'hint': '设置DNS记录的TTL时间，最小120',
-                                            'persistent-hint': True,
-                                            'type': 'number',
-                                            'min': 120,
-                                            'suffix': '秒',
                                         }
                                     }
                                 ]
@@ -445,6 +412,60 @@ class RouterOSDNS(_PluginBase):
                                     }
                                 ]
                             },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 4
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'ipv4',
+                                            'label': 'IPv4',
+                                            'hint': '同步IPv4地址的Hosts',
+                                            'persistent-hint': True
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 4
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'ipv6',
+                                            'label': 'IPv6',
+                                            'hint': '同步IPv6地址的Hosts',
+                                            'persistent-hint': True
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 4
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'match_subdomain',
+                                            'label': '子域名通配',
+                                            'hint': '写入的DNS记录将同步匹配子域名',
+                                            'persistent-hint': True
+                                        }
+                                    }
+                                ]
+                            },
                         ]
                     },
                     {
@@ -463,7 +484,7 @@ class RouterOSDNS(_PluginBase):
                                 },
                                 'content': [
                                     {
-                                        'component': 'VTextField',
+                                        'component': 'VTextarea',
                                         'props': {
                                             'model': 'ignore',
                                             'label': '忽略的IP或域名',
@@ -502,7 +523,7 @@ class RouterOSDNS(_PluginBase):
         ], {
             "enabled": False,
             "onlyonce": False,
-            "disabled_del": False,
+            "del_dns": False,
             "cron": "0 6 * * *",
             "notify": True,
             "msg_type": "Plugin",
@@ -513,6 +534,7 @@ class RouterOSDNS(_PluginBase):
             "password": None,
             "ipv4": True,
             "ipv6": True,
+            "match_subdomain": False,
             "ignore": None,
         }
 
@@ -529,20 +551,16 @@ class RouterOSDNS(_PluginBase):
             protocol, hostname, port, path = data
             base_url = f"{protocol}://{hostname}:{port}{path}"
             return base_url
-        return None
+        else:
+            raise ValueError("无法解析地址格式，请检查地址是否正确")
 
-    @property
-    def __ros_headers(self):
+    def __get_ros_auth(self):
         """
-        获取路由器请求头
+        获取路由器 auth
         """
         if not self._username or not self._password:
             raise ValueError("RouterOS用户名或密码未设置")
-        auth = base64.b64encode(f"{self._username}:{self._password}".encode("utf-8")).decode("utf-8")
-        return {
-            "Content-Type": "application/json",
-            "Authorization": f"Basic {auth}",
-        }
+        return auth.HTTPBasicAuth(username=self._username, password=self._password)
 
     def __get_base_url(self) -> Optional[str]:
         """
@@ -566,7 +584,7 @@ class RouterOSDNS(_PluginBase):
             return False
         # 获取远程hosts
         response = self.__get_dns_record(url=base_url)
-        if response.status_code != 200:
+        if not response or response.ok is False:
             return False
         remote_dns_static_list = response.json()
         # 获取本地hosts
@@ -591,19 +609,40 @@ class RouterOSDNS(_PluginBase):
             return False
         else:
             add_success, update_success, add_error, update_error = 0, 0, 0, 0
+
+            def add(a_success, a_error):
+                """
+                新增
+                """
+                r = self.__add_dns_record(url=base_url, record=record_data)
+                if r.ok:
+                    a_success += 1
+                else:
+                    a_error += 1
+                return a_success, a_error
+
+            def update(u_success, u_error):
+                """
+                更新
+                """
+                r = self.__update_dns_record(url=base_url, record_id=record_id, record=record_data)
+
+                if r and r.ok:
+                    u_success += 1
+                else:
+                    u_error += 1
+                return u_success, u_error
+
             if updated_list:
                 for update_dict in updated_list:
                     record_id = update_dict[".id"]
                     record_name = update_dict["name"]
+                    record_data = update_dict
                     try:
                         # 安全更新，避免id被异常更新产生错误
-                        record_data = update_dict.pop(".id", None)
-                        # 更新单个值
-                        success = self.__update_dns_record(url=base_url, record_id=record_id, record=record_data)
-                        if success:
-                            update_success += 1
-                        else:
-                            update_error += 1
+                        # if ".id" in record_data:
+                        #     del record_data['.id']
+                        update_success, update_error = update(u_success=update_success, u_error=update_error)
                     except Exception as e:
                         logger.error(f"更新 {record_name} 失败: {e}")
                         update_error += 1
@@ -611,19 +650,18 @@ class RouterOSDNS(_PluginBase):
             if add_list:
                 for add_dict in add_list:
                     record_name = add_dict["name"]
-                    record_data = add_dict.pop(".id", None)
+                    record_data = add_dict
                     try:
-                        success = self.__add_dns_record(url=base_url, record=record_data)
-                        if success:
-                            add_success += 1
-                        else:
-                            add_error += 1
+                        # 安全更新，避免id被异常更新产生错误
+                        if ".id" in record_data:
+                            del record_data['.id']
+                        add_success, add_error = add(a_success=add_success, a_error=add_error)
                     except Exception as e:
                         logger.error(f"添加 {record_name} 失败: {e}")
                         add_error += 1
 
             # 开始汇报结果
-            text = f"本次同步结果：应新增 {int(add_success) + int(add_error)} 项记录，成功 {int(add_success)} 项，失败 {int(add_error)} 项；应更新 {int(update_success) + int(update_error)}，成功 {int(update_success)}项，失败 {int(update_error)}项。"
+            text = f"本次同步结果：应新增 {int(add_success) + int(add_error)} 项记录，成功 {int(add_success)} 项，失败 {int(add_error)} 项；应更新 {int(update_success) + int(update_error)} 项记录，成功 {int(update_success)} 项，失败 {int(update_error)} 项。"
             logger.info(text)
             self.__send_message(title="【RouterOS路由DNS Static更新】", text=text)
 
@@ -635,8 +673,13 @@ class RouterOSDNS(_PluginBase):
         """
         # dns 地址
         base_url = self.__get_base_url()
+        if not base_url:
+            return False
         # 获取远程hosts
-        remote_dns_static_list = self.__get_dns_record(url=base_url)
+        response = self.__get_dns_record(url=base_url)
+        if not response or response.ok is False:
+            return False
+        remote_dns_static_list = response.json()
         # 获取本地hosts
         local_hosts_lines = self.__get_local_hosts()
         # 将本地的hosts解析转换成列表字典
@@ -693,14 +736,22 @@ class RouterOSDNS(_PluginBase):
                     if local_address in ignore:
                         continue
 
-                    is_update = False
+                    is_update, has_eq_ip = False, False
                     if remote_list:
                         for remote_dict in remote_list:
                             remote_id = remote_dict.get(".id", None)
                             remote_name = remote_dict.get("name", None)
+                            # 针对已有cname进行兼容
+                            if "address" in remote_dict:
+                                remote_address = remote_dict["address"]
+                            else:
+                                remote_address = remote_dict["cname"]
 
                             # 更新，仅更新匹配到的第一条，避免错误
                             if remote_name == local_address:
+                                if remote_address == local_ip:
+                                    has_eq_ip = True
+                                    continue
                                 # 判断本地IP是IPv4还是IPv6
                                 not_ignore, ip_version = self.__should_ignore_ip_and_judge_v4_or_v6(ip=local_ip)
                                 if not_ignore:
@@ -714,12 +765,13 @@ class RouterOSDNS(_PluginBase):
                                     break
 
                     # 新增
-                    if is_update is False:
+                    if is_update is False and has_eq_ip is False:
                         not_ignore, ip_version = self.__should_ignore_ip_and_judge_v4_or_v6(ip=local_ip)
                         if not_ignore:
                             add_list.append(self.__build_record_data(record_address=local_ip,
                                                                      record_name=local_address,
                                                                      ip_version=ip_version))
+
             return update_list, add_list
 
         except Exception as e:
@@ -841,9 +893,8 @@ class RouterOSDNS(_PluginBase):
                           title=title,
                           text=text)
 
-    def __build_record_data(self, record_address: str, record_name: str, ip_version: int,
-                            record_disabled: str = None, record_dynamic: str = None, record_match_subdomain: str = None,
-                            record_id: str = None, record_data: dict = None) -> dict:
+    def __build_record_data(self, record_address: str, record_name: str, ip_version: int, record_id: str = None,
+                            record_data: dict = None) -> dict:
         """
         处理 添加/更新 数据
         """
@@ -871,71 +922,73 @@ class RouterOSDNS(_PluginBase):
         # 在原有数据的基础上进行更新
         if record_data:
             record = record_data
-            # 更新数据
-            record["disabled"] = record_disabled if record_disabled else record.get("disabled", "false")
-            record["dynamic"] = record_dynamic if record_dynamic else record.get("dynamic", "false")
-            record["match-subdomain"] = record_match_subdomain if record_match_subdomain else record.get(
-                "match-subdomain", "false")
             record["ttl"] = ttl_str
             record["name"] = record_name
             record["type"] = record_address_type
-        # 创建新数据
+            record["match-subdomain"] = self._match_subdomain
+            # 移除掉部分
+            pass_key = ["disabled", "dynamic"]
+            for key in pass_key:
+                if key in record:
+                    del record[key]
         else:
             record = {
                 ".id": record_id,
-                "disabled": record_disabled,
-                "dynamic": record_dynamic,
                 "name": record_name,
                 "ttl": ttl_str,
                 "type": record_address_type,
+                "match-subdomain": self._match_subdomain,
             }
 
         if record_address_type in ["A", "AAAA"]:
             record.update({"address": record_address})
-            record.pop("cname", None)
+            if "cname" in record:
+                record["cname"] = ''
         else:
             record.update({"cname": record_address})
-            record.pop("address", None)
-
+            if "address" in record:
+                record["address"] = ''
         return record
 
     """
     api 请求方法
     """
 
-    def __request_ros_api(self, method, url: str, data: dict = None) -> Optional[Response] | List:
+    def __request_ros_api(self, method, url: str, record: dict = None) -> Optional[Response] | List:
         """
         通用请求方法，处理RouterOS路由器的DNS Static
         """
         log_tag = "尝试处理"
         try:
-            if method == "get":
+            if method == "GET":
                 log_tag = "获取"
-            elif method == "put":
+            elif method == "PUT":
                 log_tag = "添加"
-            elif method == "patch":
+            elif method == "PATCH":
                 log_tag = "更新"
-            elif method == "delete":
+            elif method == "DELETE":
                 log_tag = "删除"
             else:
                 raise ValueError(f"不支持的请求方法: {method}")
 
-            if data:
-                logger.debug(f"{log_tag} DNS 记录，URL: {url} 数据: {data}")
+            data = {"json": record} if record else {}
+            response = RequestUtils(timeout=self._timeout,
+                                    content_type="application/json",
+                                    ua=settings.USER_AGENT
+                                    ).request(url=url,
+                                              method=method,
+                                              auth=self.__get_ros_auth(),
+                                              verify=False,
+                                              **data)
 
-            data = {"json": data} if data else {}
-
-            response = RequestUtils(timeout=self._timeout).request(url=url,
-                                                                   method=method,
-                                                                   header=self.__ros_headers,
-                                                                   **data)
             if not response:
-                logger.warning(f"{log_tag} DNS 记录失败，响应为空")
+                logger.error(f"{log_tag} DNS 记录失败{(': ' + str(response.content)) if str(response.content) else ''}")
                 return []
-            elif response.status_code != 200:
-                logger.error(f"{log_tag} DNS 记录失败，状态码: {response.status_code}，响应: {response.text}")
+            elif response.ok is False:
+                logger.error(f"{log_tag} DNS 记录失败，状态码: {response.status_code}，响应: {response.content}")
+                return []
             else:
-                logger.debug(f"{log_tag} DNS 记录成功: {response}")
+                logger.debug(f"{log_tag} DNS 记录成功: {response.content}")
             return response
 
         except Exception as e:
@@ -949,14 +1002,14 @@ class RouterOSDNS(_PluginBase):
         """
         if record_id:
             url = f"{url.rstrip('/')}/{record_id}"
-        response = self.__request_ros_api(url=url, method="get")
+        response = self.__request_ros_api(url=url, method="GET")
         return response
 
     def __add_dns_record(self, url: str, record: dict) -> Optional[Response]:
         """
         向 MikroTik 路由器添加 DNS 记录。
         """
-        response = self.__request_ros_api(url=url, method="put", data=record)
+        response = self.__request_ros_api(url=url, method="PUT", record=record)
         return response
 
     def __update_dns_record(self, url, record_id, record: dict) -> Optional[Response]:
@@ -965,7 +1018,7 @@ class RouterOSDNS(_PluginBase):
         """
         if record_id:
             url = f"{url.rstrip('/')}/{record_id}"
-        response = self.__request_ros_api(url=url, method="patch", data=record)
+        response = self.__request_ros_api(url=url, method="PATCH", record=record)
         return response
 
     def __delete_dns_record(self, url, record_id) -> Optional[Response]:
@@ -974,7 +1027,7 @@ class RouterOSDNS(_PluginBase):
         """
         if record_id:
             url = f"{url.rstrip('/')}/{record_id}"
-        response = self.__request_ros_api(url=url, method="delete")
+        response = self.__request_ros_api(url=url, method="DELETE")
         return response
 
     def __update_config(self):
@@ -984,7 +1037,7 @@ class RouterOSDNS(_PluginBase):
         config = {
             "enabled": self._enabled,
             "onlyonce": self._onlyonce,
-            "disabled_del": self._disabled_del,
+            "del_dns": self._del_dns,
             "cron": self._cron,
             "notify": self._notify,
             "msg_type": self._msg_type,
@@ -995,6 +1048,7 @@ class RouterOSDNS(_PluginBase):
             "password": self._password,
             "ipv4": self._ipv4,
             "ipv6": self._ipv6,
+            "match_subdomain": self._match_subdomain,
             "ignore": self._ignore
         }
         # 更新配置
