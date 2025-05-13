@@ -25,7 +25,7 @@ class ServerChan3Msg(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/ahjsrhj/MoviePilot-Plugins/main/icons/ServerChan3.png"
     # 插件版本
-    plugin_version = "1.0"
+    plugin_version = "1.1"
     # 插件作者
     plugin_author = "ahjsrhj"
     # 作者主页

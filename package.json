@@ -2,13 +2,14 @@
     "ServerChan3Msg": {
         "name": "Server酱3消息通知",
         "description": "支持使用Server酱3发送消息通知。",
-        "version": "1.0",
+        "version": "1.1",
         "labels": "消息通知",
         "icon": "https://raw.githubusercontent.com/ahjsrhj/MoviePilot-Plugins/main/icons/ServerChan3.png",
         "author": "ahjsrhj",
         "level": 1,
         "v2": true,
         "history": {
+          "v1.1": "fix：修复 UI 问题。",
           "v1.0": "增加：支持使用Server酱3发送消息通知。"
         }
     }
