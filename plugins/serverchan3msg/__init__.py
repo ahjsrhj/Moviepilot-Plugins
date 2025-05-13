@@ -44,6 +44,7 @@ class ServerChan3Msg(_PluginBase):
 
     _serverchan_key = None
     _serverchan_uid = None
+    _serverchan_tags = "MoviePilot"
     _msgtypes = []
 
     _scheduler = None
