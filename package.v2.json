@@ -3,7 +3,7 @@
     "name": "转移触发Strm",
     "description": "转移云盘文件触发Strm生成。",
     "labels": "云盘",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "icon": "https://raw.githubusercontent.com/thsrite/MoviePilot-Plugins/main/icons/cloudcompanion.png",
     "author": "ahjsrhj",
     "level": 1,

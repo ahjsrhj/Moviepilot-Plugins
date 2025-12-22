@@ -21,7 +21,7 @@ class CloudTransferStrm(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/thsrite/MoviePilot-Plugins/main/icons/cloudcompanion.png"
     # 插件版本
-    plugin_version = "1.0.0"
+    plugin_version = "1.0.1"
     # 插件作者
     plugin_author = "ahjsrhj"
     # 作者主页
@@ -214,7 +214,7 @@ class CloudTransferStrm(_PluginBase):
             logger.info(f"成功生成strm文件: {strm_file_path} -> {strm_content}")
 
             # 通知emby刷新
-            if self._refresh_emby and self._mediaservers:
+            if self._refresh_emby:
                 time.sleep(0.1)
                 self.__refresh_emby_file(strm_file_path)
             return True
